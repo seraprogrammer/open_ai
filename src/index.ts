@@ -344,37 +344,81 @@ app.post(
       // Initialize DeepInfra client
       const deepinfra = new DeepInfra({ apiKey });
 
+      // Normalize messages - convert array content to string for models that don't support multimodal
+      const normalizedMessages = messages.map(msg => {
+        if (Array.isArray(msg.content)) {
+          // Extract text from array content
+          const textContent = msg.content
+            .filter(item => item.type === 'text' && item.text)
+            .map(item => item.text)
+            .join('\n');
+          return { ...msg, content: textContent || 'Hello' };
+        }
+        return msg;
+      });
+
+      // Log the request for debugging
+      console.log('Request to DeepInfra:', {
+        model,
+        messageCount: normalizedMessages.length,
+        temperature,
+        max_tokens
+      });
+
       // Make request
       const response = await deepinfra.chat.completions.create({
         model,
-        messages: messages as any,
+        messages: normalizedMessages as any,
         stream,
         temperature,
         max_tokens,
         top_p
       });
 
+      // Log the raw response for debugging
+      console.log('Raw response from DeepInfra:', JSON.stringify(response, null, 2));
+
       // Validate response
       if (!response || typeof response !== 'object') {
+        console.error('Invalid response type:', typeof response);
         throw new Error('Invalid response from DeepInfra API');
       }
 
       const apiResponse = response as any;
       
-      // Ensure response has required fields
-      if (!apiResponse.choices || !Array.isArray(apiResponse.choices) || apiResponse.choices.length === 0) {
-        throw new Error('API returned empty or invalid choices array');
+      // Check if response has choices
+      if (!apiResponse.choices || !Array.isArray(apiResponse.choices)) {
+        console.error('Response structure:', {
+          hasChoices: !!apiResponse.choices,
+          isArray: Array.isArray(apiResponse.choices),
+          responseKeys: Object.keys(apiResponse),
+          fullResponse: apiResponse
+        });
+        throw new Error(`API returned invalid response structure: ${JSON.stringify(apiResponse)}`);
       }
 
-      // Ensure each choice has a message
-      apiResponse.choices = apiResponse.choices.map((choice: any, index: number) => ({
-        index: choice.index ?? index,
-        message: {
-          role: choice.message?.role || 'assistant',
-          content: choice.message?.content || ''
-        },
-        finish_reason: choice.finish_reason || 'stop'
-      }));
+      if (apiResponse.choices.length === 0) {
+        console.error('Empty choices array. Full response:', apiResponse);
+        throw new Error('API returned empty choices array');
+      }
+
+      // Ensure each choice has a message with content
+      apiResponse.choices = apiResponse.choices.map((choice: any, index: number) => {
+        // Handle different response formats
+        const content = choice.message?.content || 
+                       choice.text || 
+                       choice.delta?.content || 
+                       '';
+        
+        return {
+          index: choice.index ?? index,
+          message: {
+            role: choice.message?.role || 'assistant',
+            content: content
+          },
+          finish_reason: choice.finish_reason || 'stop'
+        };
+      });
 
       // Ensure response has all required fields
       const formattedResponse: ChatCompletionResponse = {
