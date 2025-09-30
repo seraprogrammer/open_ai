@@ -132,7 +132,13 @@ type ModelType = typeof AVAILABLE_MODELS[number];
 
 interface Message {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | Array<{
+    type: string;
+    text?: string;
+    image_url?: {
+      url: string;
+    };
+  }>;
 }
 
 interface ChatCompletionChoice {
@@ -348,16 +354,59 @@ app.post(
         top_p
       });
 
-      return c.json(response as ChatCompletionResponse, 200, {
+      // Validate response
+      if (!response || typeof response !== 'object') {
+        throw new Error('Invalid response from DeepInfra API');
+      }
+
+      const apiResponse = response as any;
+      
+      // Ensure response has required fields
+      if (!apiResponse.choices || !Array.isArray(apiResponse.choices) || apiResponse.choices.length === 0) {
+        throw new Error('API returned empty or invalid choices array');
+      }
+
+      // Ensure each choice has a message
+      apiResponse.choices = apiResponse.choices.map((choice: any, index: number) => ({
+        index: choice.index ?? index,
+        message: {
+          role: choice.message?.role || 'assistant',
+          content: choice.message?.content || ''
+        },
+        finish_reason: choice.finish_reason || 'stop'
+      }));
+
+      // Ensure response has all required fields
+      const formattedResponse: ChatCompletionResponse = {
+        id: apiResponse.id || `chatcmpl-${Date.now()}`,
+        object: 'chat.completion',
+        created: apiResponse.created || Math.floor(Date.now() / 1000),
+        model: apiResponse.model || model,
+        choices: apiResponse.choices,
+        usage: apiResponse.usage || {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0
+        }
+      };
+
+      return c.json(formattedResponse, 200, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
       });
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error in chat completions:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown',
+        stack: error instanceof Error ? error.stack : undefined,
+        response: (error as any)?.response?.data
+      });
+      
       const apiError: APIError = {
         error: error instanceof Error ? error.message : 'Unknown error occurred',
-        code: 'internal_server_error'
+        code: 'internal_server_error',
+        message: error instanceof Error ? error.stack : undefined
       };
       return c.json(apiError, 500, {
         'Access-Control-Allow-Origin': '*',
