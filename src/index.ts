@@ -230,14 +230,36 @@ type CompletionRequest = z.infer<typeof completionSchema>;
 // Initialize Hono app
 const app = new Hono();
 
-// Enable CORS
-app.use('/*', cors());
+// Enable CORS with more permissive settings for VS Code extensions
+app.use('/*', cors({
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'vscode-webview://', 'https://*.vscode.dev', 'https://*.github.dev'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true
+}));
 
 // Helper function to extract API key
-const getApiKey = (authHeader: string | undefined): string | null => {
+const getApiKey = (c: any): string | null => {
+  // Try Authorization header first
+  const authHeader = c.req.header('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
     return authHeader.replace('Bearer ', '');
   }
+
+  // Try x-api-key header (common for VS Code extensions)
+  const apiKeyHeader = c.req.header('x-api-key');
+  if (apiKeyHeader) {
+    return apiKeyHeader;
+  }
+
+  // Try query parameter (for development)
+  const url = new URL(c.req.url);
+  const apiKeyParam = url.searchParams.get('api_key');
+  if (apiKeyParam) {
+    return apiKeyParam;
+  }
+
+  // Fallback to environment variable
   return process.env.DEEPINFRA_API_KEY || null;
 };
 
@@ -251,6 +273,10 @@ app.get('/', (c) => {
       chat: '/v1/chat/completions',
       completions: '/v1/completions'
     }
+  }, 200, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
   });
 });
 
@@ -268,7 +294,11 @@ app.get('/v1/models', (c) => {
     data: models
   };
 
-  return c.json(response);
+  return c.json(response, 200, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+  });
 });
 
 // Chat completions endpoint
@@ -280,9 +310,8 @@ app.post(
       const body = c.req.valid('json') as ChatCompletionRequest;
       const { model, messages, stream, temperature, max_tokens, top_p } = body;
 
-      // Get API key from Authorization header
-      const authHeader = c.req.header('Authorization');
-      const apiKey = getApiKey(authHeader);
+      // Get API key
+      const apiKey = getApiKey(c);
 
       if (!apiKey) {
         const error: APIError = { 
@@ -290,7 +319,11 @@ app.post(
           code: 'invalid_api_key',
           message: 'Please provide a valid API key in the Authorization header'
         };
-        return c.json(error, 401);
+        return c.json(error, 401, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+        });
       }
 
       // Initialize DeepInfra client
@@ -306,14 +339,22 @@ app.post(
         top_p
       });
 
-      return c.json(response as ChatCompletionResponse);
+      return c.json(response as ChatCompletionResponse, 200, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+      });
     } catch (error) {
       console.error('Error:', error);
       const apiError: APIError = {
         error: error instanceof Error ? error.message : 'Unknown error occurred',
         code: 'internal_server_error'
       };
-      return c.json(apiError, 500);
+      return c.json(apiError, 500, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+      });
     }
   }
 );
@@ -328,8 +369,7 @@ app.post(
       const { model, prompt, stream, temperature, max_tokens, top_p } = body;
 
       // Get API key
-      const authHeader = c.req.header('Authorization');
-      const apiKey = getApiKey(authHeader);
+      const apiKey = getApiKey(c);
 
       if (!apiKey) {
         const error: APIError = {
@@ -337,7 +377,11 @@ app.post(
           code: 'invalid_api_key',
           message: 'Please provide a valid API key in the Authorization header'
         };
-        return c.json(error, 401);
+        return c.json(error, 401, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+        });
       }
 
       // Convert prompt to messages format
@@ -370,14 +414,22 @@ app.post(
         usage: (response as any).usage
       };
 
-      return c.json(completionResponse);
+      return c.json(completionResponse, 200, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+      });
     } catch (error) {
       console.error('Error:', error);
       const apiError: APIError = {
         error: error instanceof Error ? error.message : 'Unknown error occurred',
         code: 'internal_server_error'
       };
-      return c.json(apiError, 500);
+      return c.json(apiError, 500, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+      });
     }
   }
 );
@@ -389,7 +441,11 @@ app.notFound((c) => {
     code: 'not_found',
     message: 'The requested endpoint does not exist'
   };
-  return c.json(error, 404);
+  return c.json(error, 404, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+  });
 });
 
 // Error handler
@@ -400,7 +456,11 @@ app.onError((err, c) => {
     code: 'internal_server_error',
     message: err instanceof Error ? err.message : 'An unexpected error occurred'
   };
-  return c.json(error, 500);
+  return c.json(error, 500, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-api-key'
+  });
 });
 
 export default app;
