@@ -1,5 +1,5 @@
 import express from 'express';
-import { DeepInfra } from './sdk.js'; // Adjust path to your client file
+import { DeepInfra } from './sdk.js';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -138,52 +138,6 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
   } catch (error) {
     console.error('Error in chat completion:', error);
-    res.status(500).json({
-      error: {
-        message: error.message,
-        type: 'server_error'
-      }
-    });
-  }
-});
-
-// Image generation endpoint
-app.post('/v1/images/generations', async (req, res) => {
-  try {
-    const params = req.body;
-
-    // Validate required parameters
-    if (!params.prompt) {
-      return res.status(400).json({
-        error: {
-          message: 'Invalid request: prompt is required',
-          type: 'invalid_request_error'
-        }
-      });
-    }
-
-    const response = await deepinfra.images.generate(params);
-    res.json(response);
-  } catch (error) {
-    console.error('Error in image generation:', error);
-    res.status(500).json({
-      error: {
-        message: error.message,
-        type: 'server_error'
-      }
-    });
-  }
-});
-
-// Image editing endpoint
-app.post('/v1/images/edits', async (req, res) => {
-  try {
-    const params = req.body;
-
-    const response = await deepinfra.images.edit(params);
-    res.json(response);
-  } catch (error) {
-    console.error('Error in image editing:', error);
     res.status(500).json({
       error: {
         message: error.message,
