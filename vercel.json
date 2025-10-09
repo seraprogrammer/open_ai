@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "routes": [
+    { "src": "/health", "dest": "/api/health" },
+    { "src": "/v1/models", "dest": "/api/v1/models" },
+    { "src": "/v1/chat/completions", "dest": "/api/v1/chat/completions" },
+    { "src": "/v1/images/generations", "dest": "/api/v1/images/generations" }
+  ]
+}
+
+
