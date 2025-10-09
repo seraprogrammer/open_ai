@@ -1,5 +1,5 @@
 import express from 'express';
-import { DeepInfra } from '../sdk.js';
+import { DeepInfra } from './sdk.js'; // Adjust path to your client file
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -7,8 +7,10 @@ const PORT = process.env.PORT || 8000;
 // Middleware
 app.use(express.json());
 
+// Initialize DeepInfra client (no API key needed)
 const deepinfra = new DeepInfra();
 
+// Dummy API key for authentication (required by some IDEs like VSCode extensions)
 const DUMMY_API_KEY = 'sk-deepinfra-dummy-key-12345';
 
 // CORS middleware
@@ -23,6 +25,7 @@ app.use((req, res, next) => {
   next();
 });
 
+// API Key validation middleware (accepts dummy key)
 app.use((req, res, next) => {
   // Skip auth for health and models endpoints
   if (req.path === '/health' || req.path === '/v1/models') {
@@ -207,8 +210,6 @@ app.listen(PORT, () => {
   console.log(`💬 Chat endpoint: http://localhost:${PORT}/v1/chat/completions`);
   console.log(`🖼️  Images endpoint: http://localhost:${PORT}/v1/images/generations`);
   console.log(`✏️  Image edit endpoint: http://localhost:${PORT}/v1/images/edits`);
-  console.log(`\n🔑 Use this dummy API key in VSCode: ${DUMMY_API_KEY}`);
-  console.log(`   Or use any API key (e.g., sk-anything-you-want)`);
 });
 
 export default app;

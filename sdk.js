@@ -45,11 +45,12 @@ class CorsProxyManager {
 
 class Client {
     constructor(options = {}) {
-        if (!options.baseUrl && !options.apiEndpoint && !options.apiKey) {
+        // Only require baseUrl or apiEndpoint, API key is optional
+        if (!options.baseUrl && !options.apiEndpoint) {
             if (typeof localStorage !== 'undefined' && localStorage && localStorage.getItem("Azure-api_key")) {
                 options.apiKey = localStorage.getItem("Azure-api_key");
             } else {
-                throw new Error('Client requires at least baseUrl, apiEndpoint, or apiKey to be set.');
+                throw new Error('Client requires at least baseUrl or apiEndpoint to be set.');
             }
         }
         this.proxyManager = new CorsProxyManager();
@@ -69,7 +70,7 @@ class Client {
         };
         
         this.modelAliases = options.modelAliases || {};
-        this.swapAliases = {}
+        this.swapAliases = {};
         Object.keys(this.modelAliases).forEach(key => {
           this.swapAliases[this.modelAliases[key]] = key;
         });
@@ -487,7 +488,7 @@ class DeepInfra extends Client {
     constructor(options = {}) {
         super({
             baseUrl: 'https://api.deepinfra.com/v1/openai',
-            defaultModel: 'openai/gpt-oss-120b',
+            defaultModel: 'zai-org/GLM-4.5',
             ...options
         });
     }
