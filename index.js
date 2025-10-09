@@ -26,7 +26,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// API Key validation middleware (accepts dummy key)
+// API Key validation middleware (uses dummy key)
 app.use((req, res, next) => {
   // Skip auth for health and models endpoints
   if (req.path === '/health' || req.path === '/v1/models') {
@@ -47,11 +47,11 @@ app.use((req, res, next) => {
 
   const token = authHeader.replace('Bearer ', '');
   
-  // Accept any API key (dummy or real) since DeepInfra doesn't need auth
-  if (!token) {
+  // Only accept the dummy API key
+  if (token !== DUMMY_API_KEY) {
     return res.status(401).json({
       error: {
-        message: 'Invalid API key',
+        message: 'Invalid API key. Use: ' + DUMMY_API_KEY,
         type: 'invalid_request_error',
         code: 'invalid_api_key'
       }
