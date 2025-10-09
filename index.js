@@ -5,13 +5,11 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Middleware
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ limit: '5mb', extended: true }));
+app.use(express.json({ limit: '50mb' })); // Increased for large requests
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Initialize DeepInfra client (no API key needed)
+// Initialize DeepInfra client
 const deepinfra = new DeepInfra();
-
-// Dummy API key for authentication (required by some IDEs like VSCode extensions)
 const DUMMY_API_KEY = 'sk-deepinfra-dummy-key-12345';
 
 // CORS middleware
@@ -26,9 +24,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// API Key validation middleware (uses dummy key)
+// API Key validation middleware
 app.use((req, res, next) => {
-  // Skip auth for health and models endpoints
   if (req.path === '/health' || req.path === '/v1/models') {
     return next();
   }
@@ -47,7 +44,6 @@ app.use((req, res, next) => {
 
   const token = authHeader.replace('Bearer ', '');
   
-  // Only accept the dummy API key
   if (token !== DUMMY_API_KEY) {
     return res.status(401).json({
       error: {
@@ -91,7 +87,7 @@ app.get('/v1/models', async (req, res) => {
   }
 });
 
-// Chat completions endpoint
+// Enhanced chat completions endpoint
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const params = req.body;
@@ -106,17 +102,29 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
     }
 
-    // Handle streaming
+    // Handle streaming with enhanced timeout prevention
     if (params.stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // Disable proxy buffering
+      
+      // Increase timeout for long responses
+      req.setTimeout(600000); // 10 minutes
+      res.setTimeout(600000);
 
       try {
         const stream = await deepinfra.chat.completions.create(params);
         
+        let chunkCount = 0;
         for await (const chunk of stream) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          chunkCount++;
+          
+          // Send periodic keep-alive comments to prevent timeout
+          if (chunkCount % 50 === 0) {
+            res.write(': keep-alive\n\n');
+          }
         }
         
         res.write('data: [DONE]\n\n');
@@ -132,8 +140,18 @@ app.post('/v1/chat/completions', async (req, res) => {
         res.end();
       }
     } else {
-      // Non-streaming response
+      // Non-streaming response with extended timeout
+      req.setTimeout(600000); // 10 minutes
+      res.setTimeout(600000);
+      
       const response = await deepinfra.chat.completions.create(params);
+      
+      // Use chunked transfer for large responses
+      const responseStr = JSON.stringify(response);
+      if (responseStr.length > 100000) { // > 100KB
+        res.setHeader('Transfer-Encoding', 'chunked');
+      }
+      
       res.json(response);
     }
   } catch (error) {
@@ -158,13 +176,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server with keep-alive settings
+const server = app.listen(PORT, () => {
   console.log(`🚀 DeepInfra OpenAI-compatible API server running on port ${PORT}`);
   console.log(`📋 Models endpoint: http://localhost:${PORT}/v1/models`);
   console.log(`💬 Chat endpoint: http://localhost:${PORT}/v1/chat/completions`);
-  console.log(`🖼️  Images endpoint: http://localhost:${PORT}/v1/images/generations`);
-  console.log(`✏️  Image edit endpoint: http://localhost:${PORT}/v1/images/edits`);
+  console.log(`⚡ Optimized for long responses and serverless environments`);
 });
+
+// Extended keep-alive and timeout settings
+server.keepAliveTimeout = 620000; // 10 minutes + buffer
+server.headersTimeout = 630000; // Slightly higher than keepAliveTimeout
 
 export default app;
