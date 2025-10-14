@@ -1,5 +1,5 @@
 import express from 'express';
-import { DeepInfra, HuggingFace, Worker } from './sdk.js';
+import { DeepInfra } from './sdk.js';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -8,140 +8,10 @@ const PORT = process.env.PORT || 8000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Initialize clients
-const clients = {
-  deepinfra: new DeepInfra(),
-  huggingface: new HuggingFace(),
-  worker: new Worker(),
-  airforce: new (class Airforce {
-    constructor() {
-      this.baseUrl = 'https://api.airforce';
-      this.apiEndpoint = 'https://api.airforce/chat/completions';
-      this.imageEndpoint = 'https://api.airforce/imagine2';
-    }
-    
-    get chat() {
-      return {
-        completions: {
-          create: async (params) => {
-            const { signal, ...options } = params;
-            const response = await fetch(this.apiEndpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(options),
-              signal
-            });
-            
-            if (params.stream) {
-              return this._streamResponse(response);
-            }
-            
-            if (!response.ok) {
-              throw new Error(`Status ${response.status}: ${await response.text()}`);
-            }
-            return response.json();
-          }
-        }
-      };
-    }
-    
-    get models() {
-      return {
-        list: async () => {
-          try {
-            const response = await fetch(`${this.baseUrl}/models`);
-            if (!response.ok) throw new Error('Failed to fetch');
-            return await response.json();
-          } catch {
-            return [
-              // Chat models
-              { id: 'gpt-4o-mini', type: 'chat' },
-              { id: 'gpt-5-mini', type: 'chat' },
-              { id: 'gpt-oss-120b', type: 'chat' },
-              { id: 'gpt-oss-20b', type: 'chat' },
-              { id: 'gemini-2.0-flash', type: 'chat' },
-              { id: 'gemini-2.5-flash', type: 'chat' },
-              { id: 'gemini-2.5-pro', type: 'chat' },
-              { id: 'kimi-k2', type: 'chat' },
-              { id: 'sonar-reasoning', type: 'chat' },
-              { id: 'claude-haiku', type: 'chat' },
-              { id: 'mistral-large', type: 'chat' },
-              { id: 'qwen3-coder', type: 'chat' },
-              { id: 'mistral-medium', type: 'chat' },
-              { id: 'pixtral', type: 'chat' },
-              { id: 'mistral-small', type: 'chat' },
-              { id: 'openchat-3.5', type: 'chat' },
-              { id: 'deepseek-v3', type: 'chat' },
-              { id: 'grok-4', type: 'chat' },
-              { id: 'llama-4-scout', type: 'chat' },
-              { id: 'llama-4-maverick', type: 'chat' },
-              { id: 'deepseek-v3.1', type: 'chat' },
-              { id: 'glm-4.5-air', type: 'chat' },
-              { id: 'glm-4.5', type: 'chat' },
-              { id: 'qwen3-235b', type: 'chat' },
-              // Image models
-              { id: 'imagen-3', type: 'image' },
-              { id: 'imagen-4', type: 'image' },
-              { id: 'dall-e-3', type: 'image' },
-              { id: 'sdxl', type: 'image' },
-              { id: 'flux-schnell', type: 'image' },
-              { id: 'flux-dev', type: 'image' },
-              { id: 'flux-krea-dev', type: 'image' }
-            ];
-          }
-        }
-      };
-    }
-    
-    get images() {
-      return {
-        generate: async (params) => {
-          const response = await fetch(this.imageEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(params)
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Status ${response.status}: ${await response.text()}`);
-          }
-          return response.json();
-        }
-      };
-    }
-    
-    async *_streamResponse(response) {
-      if (!response.ok) {
-        throw new Error(`Status ${response.status}: ${await response.text()}`);
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n');
-        buffer = parts.pop();
-        
-        for (const part of parts) {
-          if (!part.trim() || part === 'data: [DONE]') continue;
-          try {
-            if (part.startsWith('data: ')) {
-              yield JSON.parse(part.slice(6));
-            }
-          } catch (err) {
-            console.error('Parse error:', err);
-          }
-        }
-      }
-    }
-  })()
-};
+// Initialize DeepInfra client (no API key needed)
+const deepinfra = new DeepInfra();
 
-// Dummy API key
+// Dummy API key for authentication (required by some IDEs like VSCode extensions)
 const DUMMY_API_KEY = 'sk-deepinfra-dummy-key-12345';
 
 // CORS middleware
@@ -156,8 +26,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// API Key validation
+// API Key validation middleware (uses dummy key)
 app.use((req, res, next) => {
+  // Skip auth for health and models endpoints
   if (req.path === '/health' || req.path === '/v1/models') {
     return next();
   }
@@ -176,6 +47,7 @@ app.use((req, res, next) => {
 
   const token = authHeader.replace('Bearer ', '');
   
+  // Only accept the dummy API key
   if (token !== DUMMY_API_KEY) {
     return res.status(401).json({
       error: {
@@ -189,29 +61,22 @@ app.use((req, res, next) => {
   next();
 });
 
-// Get provider from query or header
-function getProvider(req) {
-  const provider = req.query.provider || req.headers['x-provider'] || 'deepinfra';
-  return clients[provider] || clients.deepinfra;
-}
-
-// Health check
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', providers: Object.keys(clients) });
+  res.json({ status: 'ok', provider: 'DeepInfra' });
 });
 
-// List models
+// List available models
 app.get('/v1/models', async (req, res) => {
   try {
-    const provider = getProvider(req);
-    const models = await provider.models.list();
+    const models = await deepinfra.models.list();
     res.json({
       object: 'list',
       data: models.map(model => ({
         id: model.id,
         object: 'model',
         created: Date.now(),
-        owned_by: req.query.provider || 'deepinfra',
+        owned_by: 'deepinfra',
         type: model.type || 'chat'
       }))
     });
@@ -226,12 +91,12 @@ app.get('/v1/models', async (req, res) => {
   }
 });
 
-// Chat completions
+// Chat completions endpoint
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const params = req.body;
-    const provider = getProvider(req);
 
+    // Validate required parameters
     if (!params.messages || !Array.isArray(params.messages)) {
       return res.status(400).json({
         error: {
@@ -241,13 +106,14 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
     }
 
+    // Handle streaming
     if (params.stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
       try {
-        const stream = await provider.chat.completions.create(params);
+        const stream = await deepinfra.chat.completions.create(params);
         
         for await (const chunk of stream) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -266,7 +132,8 @@ app.post('/v1/chat/completions', async (req, res) => {
         res.end();
       }
     } else {
-      const response = await provider.chat.completions.create(params);
+      // Non-streaming response
+      const response = await deepinfra.chat.completions.create(params);
       res.json(response);
     }
   } catch (error) {
@@ -280,63 +147,7 @@ app.post('/v1/chat/completions', async (req, res) => {
   }
 });
 
-// Image generation
-app.post('/v1/images/generations', async (req, res) => {
-  try {
-    const params = req.body;
-    const provider = getProvider(req);
-
-    if (!params.prompt) {
-      return res.status(400).json({
-        error: {
-          message: 'Invalid request: prompt is required',
-          type: 'invalid_request_error'
-        }
-      });
-    }
-
-    const response = await provider.images.generate(params);
-    res.json(response);
-  } catch (error) {
-    console.error('Error generating image:', error);
-    res.status(500).json({
-      error: {
-        message: error.message,
-        type: 'server_error'
-      }
-    });
-  }
-});
-
-// Image edit
-app.post('/v1/images/edits', async (req, res) => {
-  try {
-    const params = req.body;
-    const provider = getProvider(req);
-
-    if (!provider.images.edit) {
-      return res.status(400).json({
-        error: {
-          message: 'Image editing not supported by this provider',
-          type: 'invalid_request_error'
-        }
-      });
-    }
-
-    const response = await provider.images.edit(params);
-    res.json(response);
-  } catch (error) {
-    console.error('Error editing image:', error);
-    res.status(500).json({
-      error: {
-        message: error.message,
-        type: 'server_error'
-      }
-    });
-  }
-});
-
-// Error handling
+// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
@@ -349,10 +160,11 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Multi-Provider API Server running on port ${PORT}`);
-  console.log(`📋 Models: http://localhost:${PORT}/v1/models?provider=deepinfra`);
-  console.log(`💬 Chat: http://localhost:${PORT}/v1/chat/completions?provider=airforce`);
-  console.log(`🖼️  Images: http://localhost:${PORT}/v1/images/generations?provider=worker`);
-  console.log(`\n Available providers: ${Object.keys(clients).join(', ')}`);
-  console.log(`\n Use ?provider=<name> or header X-Provider: <name>`);
+  console.log(`🚀 DeepInfra OpenAI-compatible API server running on port ${PORT}`);
+  console.log(`📋 Models endpoint: http://localhost:${PORT}/v1/models`);
+  console.log(`💬 Chat endpoint: http://localhost:${PORT}/v1/chat/completions`);
+  console.log(`🖼️  Images endpoint: http://localhost:${PORT}/v1/images/generations`);
+  console.log(`✏️  Image edit endpoint: http://localhost:${PORT}/v1/images/edits`);
 });
+
+export default app;
