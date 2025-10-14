@@ -45,12 +45,11 @@ class CorsProxyManager {
 
 class Client {
     constructor(options = {}) {
-        // Only require baseUrl or apiEndpoint, API key is optional
-        if (!options.baseUrl && !options.apiEndpoint) {
+        if (!options.baseUrl && !options.apiEndpoint && !options.apiKey) {
             if (typeof localStorage !== 'undefined' && localStorage && localStorage.getItem("Azure-api_key")) {
                 options.apiKey = localStorage.getItem("Azure-api_key");
             } else {
-                throw new Error('Client requires at least baseUrl or apiEndpoint to be set.');
+                throw new Error('Client requires at least baseUrl, apiEndpoint, or apiKey to be set.');
             }
         }
         this.proxyManager = new CorsProxyManager();
@@ -70,7 +69,7 @@ class Client {
         };
         
         this.modelAliases = options.modelAliases || {};
-        this.swapAliases = {};
+        this.swapAliases = {}
         Object.keys(this.modelAliases).forEach(key => {
           this.swapAliases[this.modelAliases[key]] = key;
         });
@@ -121,10 +120,12 @@ class Client {
                     params.stream_options = {include_usage: true};
                 }
                 this.logCallback && this.logCallback({request: params, type: 'chat'});
+                const { signal, ...options } = params;
                 const requestOptions = {
                     method: 'POST',
                     headers: this.extraHeaders,
-                    body: JSON.stringify(params)
+                    body: JSON.stringify(options),
+                    signal: signal
                 };
                 const response = await fetch(this.apiEndpoint.replace("{now}", Date.now()), requestOptions);
                 if (params.stream) {
@@ -260,11 +261,13 @@ class Client {
             try {
               if (part.startsWith('data: ')) {
                 const data = JSON.parse(part.slice(6));
-                if (data.response) {
-                    data.choices = [{delta: {content: data.response}}];
-                }
-                if (data.choices && data.choices[0]?.delta?.reasoning_content) {
-                    data.choices[0].delta.reasoning = data.choices[0].delta.reasoning_content;
+                if (data.choices === undefined) {
+                    if (data.response) {
+                        data.choices = [{delta: {content: "" + data.response}}];
+                    }
+                    if (data.choices && data.choices[0]?.delta?.reasoning_content) {
+                        data.choices[0].delta.reasoning = data.choices[0].delta.reasoning_content;
+                    }
                 }
                 if (response.headers.get('x-provider')) {
                     data.provider = response.headers.get('x-provider');
@@ -273,12 +276,14 @@ class Client {
                 yield data;
               } else if (response.headers.get('Content-Type').startsWith('application/json')) {
                 const data = JSON.parse(part);
-                if (data.choices && data.choices[0]?.message) {
-                    data.choices[0].delta = data.choices[0].message;
-                } else if (data.output && data.output[0].content) {
-                    data.choices = [{delta: {content: data.output[0].content[0].text}}];
-                } else if (data.message) {
-                    data.choices = [{delta: data.message}];
+                if (data.choices === undefined) {
+                    if (data.choices && data.choices[0]?.message) {
+                        data.choices[0].delta = data.choices[0].message;
+                    } else if (data.output && data.output[0].content) {
+                        data.choices = [{delta: {content: data.output[0].content[0].text}}];
+                    } else if (data.message) {
+                        data.choices = [{delta: data.message}];
+                    }
                 }
                 if (data.model) {
                     data.model = data.model.replace('models/', '');
@@ -462,10 +467,12 @@ class Audio extends Client {
                 if (!params.modalities) {
                     params.modalities = ["text", "audio"]
                 }
+                const { signal, ...options } = params;
                 const requestOptions = {
                     method: 'POST',
                     headers: this.extraHeaders,
-                    body: JSON.stringify(params)
+                    body: JSON.stringify(options),
+                    signal: signal
                 };
                 try {
                     const response = await fetch(this.apiEndpoint, requestOptions);
@@ -488,7 +495,7 @@ class DeepInfra extends Client {
     constructor(options = {}) {
         super({
             baseUrl: 'https://api.deepinfra.com/v1/openai',
-            defaultModel: 'zai-org/GLM-4.5',
+            defaultModel: 'openai/gpt-oss-120b',
             ...options
         });
     }
@@ -557,7 +564,7 @@ class Puter {
             completions: {
                 create: async (params) => {
                     this.puter = this.puter || await this._injectPuter();
-                    const { messages, ...options } = params;
+                    const { messages, signal, ...options } = params;
                     if (!options.model && this.defaultModel) {
                         options.model = this.defaultModel;
                     }
@@ -731,7 +738,7 @@ class HuggingFace extends Client {
                     if (!this.apiKey) {
                         throw new Error("HuggingFace API key is required. Set it in the options or as an environment variable HUGGINGFACE_API_KEY.");
                     }
-                    let { model, ...options } = params;
+                    let { model, signal, ...options } = params;
 
                     if (!model) {
                       model = this.defaultModel;
@@ -774,7 +781,8 @@ class HuggingFace extends Client {
                         body: JSON.stringify({
                             model,
                             ...options
-                        })
+                        }),
+                        signal: signal
                     };
                     const response = await fetch(`${apiBase}/chat/completions`, requestOptions);
                     if (params.stream) {
