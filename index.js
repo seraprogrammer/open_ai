@@ -1,5 +1,5 @@
 import express from 'express';
-import { DeepInfra } from './sdk.js';
+import { PollinationsAI } from './sdk.js';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -8,11 +8,11 @@ const PORT = process.env.PORT || 8000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Initialize DeepInfra client (no API key needed)
-const deepinfra = new DeepInfra();
+// Initialize PollinationsAI client (no API key needed!)
+const pollinations = new PollinationsAI();
 
 // Dummy API key for authentication (required by some IDEs like VSCode extensions)
-const DUMMY_API_KEY = 'sk-deepinfra-dummy-key-12345';
+const DUMMY_API_KEY = 'sk-pollinations-dummy-key-12345';
 
 // CORS middleware
 app.use((req, res, next) => {
@@ -63,20 +63,20 @@ app.use((req, res, next) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', provider: 'DeepInfra' });
+  res.json({ status: 'ok', provider: 'PollinationsAI' });
 });
 
 // List available models
 app.get('/v1/models', async (req, res) => {
   try {
-    const models = await deepinfra.models.list();
+    const models = await pollinations.models.list();
     res.json({
       object: 'list',
       data: models.map(model => ({
         id: model.id,
         object: 'model',
         created: Date.now(),
-        owned_by: 'deepinfra',
+        owned_by: 'pollinations',
         type: model.type || 'chat'
       }))
     });
@@ -113,7 +113,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       res.setHeader('Connection', 'keep-alive');
 
       try {
-        const stream = await deepinfra.chat.completions.create(params);
+        const stream = await pollinations.chat.completions.create(params);
         
         for await (const chunk of stream) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -133,11 +133,39 @@ app.post('/v1/chat/completions', async (req, res) => {
       }
     } else {
       // Non-streaming response
-      const response = await deepinfra.chat.completions.create(params);
+      const response = await pollinations.chat.completions.create(params);
       res.json(response);
     }
   } catch (error) {
     console.error('Error in chat completion:', error);
+    res.status(500).json({
+      error: {
+        message: error.message,
+        type: 'server_error'
+      }
+    });
+  }
+});
+
+// Image generation endpoint
+app.post('/v1/images/generations', async (req, res) => {
+  try {
+    const params = req.body;
+
+    // Validate required parameters
+    if (!params.prompt) {
+      return res.status(400).json({
+        error: {
+          message: 'Invalid request: prompt is required',
+          type: 'invalid_request_error'
+        }
+      });
+    }
+
+    const response = await pollinations.images.generate(params);
+    res.json(response);
+  } catch (error) {
+    console.error('Error in image generation:', error);
     res.status(500).json({
       error: {
         message: error.message,
@@ -160,11 +188,10 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 DeepInfra OpenAI-compatible API server running on port ${PORT}`);
+  console.log(`🚀 PollinationsAI OpenAI-compatible API server running on port ${PORT}`);
   console.log(`📋 Models endpoint: http://localhost:${PORT}/v1/models`);
   console.log(`💬 Chat endpoint: http://localhost:${PORT}/v1/chat/completions`);
   console.log(`🖼️  Images endpoint: http://localhost:${PORT}/v1/images/generations`);
-  console.log(`✏️  Image edit endpoint: http://localhost:${PORT}/v1/images/edits`);
+  console.log(`🔑 Dummy API Key: ${DUMMY_API_KEY}`);
+  console.log(`\n💡 No real API key needed - PollinationsAI is completely free!`);
 });
-
-export default app;
