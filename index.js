@@ -54,9 +54,39 @@ const clients = {
             return await response.json();
           } catch {
             return [
+              // Chat models
               { id: 'gpt-4o-mini', type: 'chat' },
-              { id: 'claude-3-5-sonnet', type: 'chat' },
-              { id: 'flux-pro', type: 'image' }
+              { id: 'gpt-5-mini', type: 'chat' },
+              { id: 'gpt-oss-120b', type: 'chat' },
+              { id: 'gpt-oss-20b', type: 'chat' },
+              { id: 'gemini-2.0-flash', type: 'chat' },
+              { id: 'gemini-2.5-flash', type: 'chat' },
+              { id: 'gemini-2.5-pro', type: 'chat' },
+              { id: 'kimi-k2', type: 'chat' },
+              { id: 'sonar-reasoning', type: 'chat' },
+              { id: 'claude-haiku', type: 'chat' },
+              { id: 'mistral-large', type: 'chat' },
+              { id: 'qwen3-coder', type: 'chat' },
+              { id: 'mistral-medium', type: 'chat' },
+              { id: 'pixtral', type: 'chat' },
+              { id: 'mistral-small', type: 'chat' },
+              { id: 'openchat-3.5', type: 'chat' },
+              { id: 'deepseek-v3', type: 'chat' },
+              { id: 'grok-4', type: 'chat' },
+              { id: 'llama-4-scout', type: 'chat' },
+              { id: 'llama-4-maverick', type: 'chat' },
+              { id: 'deepseek-v3.1', type: 'chat' },
+              { id: 'glm-4.5-air', type: 'chat' },
+              { id: 'glm-4.5', type: 'chat' },
+              { id: 'qwen3-235b', type: 'chat' },
+              // Image models
+              { id: 'imagen-3', type: 'image' },
+              { id: 'imagen-4', type: 'image' },
+              { id: 'dall-e-3', type: 'image' },
+              { id: 'sdxl', type: 'image' },
+              { id: 'flux-schnell', type: 'image' },
+              { id: 'flux-dev', type: 'image' },
+              { id: 'flux-krea-dev', type: 'image' }
             ];
           }
         }
